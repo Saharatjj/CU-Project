@@ -1,0 +1,155 @@
+clc
+clear
+%===============================================================
+%Input interface
+ele_size = 'What is the n square dimension ?\n';
+n = input(ele_size);
+len ='What is the square size(m) ?\n';
+L = input(len);
+k_heat ='What is the value of k ?\n';
+k = input(k_heat);
+thick = 'What is the value of t ?\n';
+t = input(thick);
+q_gen ='What is the value of Q gen ?\n';
+Qq = input(q_gen);
+below_T = 'What is the bottom boundary temperature ?\n';
+T1 = input(below_T);
+right_T = 'What is the right boundary temperature ?\n';
+T2 = input(right_T);
+top_T = 'What is the top boundary temperature ?\n';
+T3 = input(top_T);
+left_T = 'What is the left boundary temperature ?\n';
+T4 = input(left_T);
+%===============================================================
+%Calculate
+ele = element(n);
+K = Cal_K(L,k,t,n);
+[Boundary,Boundary_node] = Cal_Boundary(T1,T2,T3,T4,n);
+[T,Q] = TQ(T1,T2,T3,T4,n);
+Qqen = Q_gen(Qq,L,t,n);
+eqn = K*T == Q+Qqen;
+S = solve(eqn);
+Ss = structfun(@double,S);
+a0 = 4*n+1;k = n;l = n;m = 0;
+T_Solve = zeros(n+1);
+for i = 1:n-1
+   for j = 1:n-1
+ T_Solve(k,l-(n-2)) = Ss(a0+m);
+ m = m+1;
+ l = l+1;
+ end
+ l = n;
+ k = k-1;
+end
+T_approx = Boundary + T_Solve;
+heatmap(T_approx)
+colormap(jet)
+%===============================================================
+function Node = element(n) %Calculate node of element
+ele = zeros(n^2,1);
+K = 1;L = n;c = 1;
+for i = 1:n
+ for j = K:L
+ N = [j j+1 j+1+n+1 j+1+n];
+ ele(c,1) = N(1,1);
+ ele(c,2) = N(1,2);
+ ele(c,3) = N(1,3);
+ ele(c,4) = N(1,4);
+ c = c+1;
+ end
+ K = L+2;
+ L = L+2+n-1;
+end
+Node = ele;
+end
+function K = Cal_K(L,k,t,n) %Calculate K
+ele = element(n);
+a = L/n;b = L/n;
+Q = 1/3*(a/b+b/a);R = 1/6*(a/b-2*b/a);S = 1/6*(-a/b-b/a);
+T = 1/6*(-2*a/b+b/a);
+Kc = k*t*[Q R S T;
+ R Q T S;
+ S T Q R;
+ T S R Q];
+K_all = zeros((n+1)^2);K_add = zeros((n+1)^2);
+for k = 1:n^2
+ for l = 1:4
+ K_add(ele(k,l),ele(k,1)) = Kc(l,1);
+ K_add(ele(k,l),ele(k,2)) = Kc(l,2);
+ K_add(ele(k,l),ele(k,3)) = Kc(l,3);
+ K_add(ele(k,l),ele(k,4)) = Kc(l,4);
+ end
+ K_all = K_all + K_add;
+ K_add = zeros((n+1)^2);
+end
+K = K_all;
+end
+ 
+function [C,node] = Cal_Boundary(T1,T2,T3,T4,n) %Calculate Boundary 
+T1_value = zeros(1,n+1);T2_value = zeros(1,n+1);T3_value = zeros(1,n+1);T4_value = zeros(1,n+1);
+T_below = 1:n+1;T_top = (n+1)^2-n:(n+1)^2;
+T_right = n+1+n+1:n+1:(n+1)^2-(n+1);
+T_left = 1+n+1:n+1:(n+1)^2-n-(n+1);
+T_all = zeros(n+1);
+T_boundary = [T_below T_right T_top T_left];
+for i = 1:n+1
+ T1_value(1,i) = T1;
+ T3_value(1,i) = T3;
+ T_all(n+1,i) = T1_value(1,i);
+ T_all(1,i) = T3_value(1,i);
+end
+for i = 2:n
+ T2_value(1,i) = T2;
+ T4_value(1,i) = T4;
+ T_all(i,n+1) = T2_value(1,i);
+ T_all(i,1) = T4_value(1,i);
+end
+C = T_all;
+node = T_boundary;
+end
+ 
+function [Temp,Heat] = TQ(T1,T2,T3,T4,n) %Calculate T & Q
+[Boundary,Boundary_node] = Cal_Boundary(T1,T2,T3,T4,n);
+Q_node = zeros(n-1);
+L = n+3;
+for i = 1:n-1
+ Q_node(i,:) = [L:L+n-2];
+ L = L+n+1;
+end
+syms T [(n+1)^2 1]
+syms Q [(n+1)^2 1]
+for i = Boundary_node(1:n+1) %bottom
+ T(i,1) = Boundary(n+1,1);
+end
+for i = Boundary_node(n+1+1:n+1+(n-1)) %right
+ T(i,1) = Boundary(n-(n-2),n+1);
+end
+for i = Boundary_node(n+1+(n-1)+1:n+1+(n-1)+(n+1)) %top
+ T(i,1) = Boundary(1,1);
+end
+for i = Boundary_node(n+1+(n-1)+(n+1)+1:n+1+(n-1)+(n+1)+(n-1)) 
+%left
+ T(i,1) = Boundary(n-1,n-(n-1));
+end
+for i = Q_node
+ Q(i,1) = 0;
+end
+Temp = T;
+Heat = Q;
+end
+ 
+function Heat_gen = Q_gen(Qq,L,t,n) %Calculate Q gen
+ele = element(n);
+a = L/n;b = L/n;
+Q_gen_all = zeros((n+1)^2,1);Q_gen_add = zeros((n+1)^2,1);
+Q_value = Qq*a*b*t;
+Q_gen = Q_value/4*[1;1;1;1];
+for i = 1:n^2
+ for j = 1:4
+ Q_gen_add(ele(i,j),1) = Q_gen(j,1);
+ end
+ Q_gen_all = Q_gen_all + Q_gen_add;
+ Q_gen_add = zeros((n+1)^2,1);
+end
+Heat_gen = Q_gen_all;
+end
